@@ -13,17 +13,18 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v5
 
-      # 🔥 核心修正：Qt 6.10.1 正确架构 = win64_mingw142（不是131）
-      - name: 安装Qt 6.10.1
+      # ✅ 【唯一稳定可用组合】Qt 6.6.2 + MinGW 11.2 （GitHub Actions官方兼容）
+      - name: 安装 Qt 环境
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.10.1'
+          version: '6.6.2'        # 🔥 核心：放弃6.10.1，用这个稳定版
           host: 'windows'
           target: 'desktop'
-          arch: 'win64_mingw142'  # ✅ 这里是修复的关键！
+          arch: 'win64_mingw112'  # 🔥 对应正确架构
           setup-python: false
+          aqtversion: latest      # 🔥 用最新安装工具，避免版本不兼容
 
-      # 编译项目（外部构建，规范无冲突）
+      # 编译项目
       - name: 编译项目
         run: |
           mkdir build
@@ -31,7 +32,7 @@ jobs:
           qmake ..\qt_im_project.pro
           mingw32-make -j4
 
-      # 打包Qt所有依赖
+      # 打包所有Qt依赖（双击exe可直接运行）
       - name: 打包依赖
         run: |
           cd build/release
