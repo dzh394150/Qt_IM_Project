@@ -13,7 +13,8 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v5
 
-      - name: 安装Qt环境
+      # 🔥 关键修复：安装Qt + 自动带上 websockets 模块
+      - name: 安装Qt环境 + Websockets组件
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.6.2'
@@ -21,12 +22,13 @@ jobs:
           target: 'desktop'
           arch: 'win64_msvc2019_64'
           setup-python: false
+          modules: 'qtwebsockets'  # ✅ 安装你项目需要的websockets模块
 
-      # 🔥 【关键修复】初始化 MSVC 编译环境（自动配置 cl.exe 和 nmake）
+      # 初始化MSVC编译环境
       - name: 初始化Visual Studio编译环境
         uses: ilammy/msvc-dev-cmd@v1
 
-      # 编译项目（现在 nmake 和 cl 都能正常找到）
+      # 编译项目
       - name: 编译项目
         run: |
           mkdir build
@@ -34,11 +36,13 @@ jobs:
           qmake ..\qt_im_project.pro
           nmake
 
+      # 打包依赖
       - name: 打包Qt依赖
         run: |
           cd build/release
           windeployqt --release --no-translations qt_im_project.exe
 
+      # 上传成品
       - name: 上传软件包
         uses: actions/upload-artifact@v4
         with:
