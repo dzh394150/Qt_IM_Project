@@ -8,24 +8,23 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    # 彻底解决Node.js 20弃用问题
+    # 解决Node.js 20弃用警告
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
     steps:
       - name: 拉取代码
-        uses: actions/checkout@v5  # 升级到支持Node.js 24的最新版
+        uses: actions/checkout@v4
 
-      - name: 安装Aqua（Qt官方稳定安装工具，彻底替代install-qt-action）
-        uses: jurplel/install-qt-action@v5  # 升级到v5，支持Node.js 24，无Python依赖
-        with:
-          version: '6.8.3'
-          host: 'windows'
-          target: 'desktop'
-          arch: 'win64_mingw131'
-          setup-python: false
-          aqua: true  # 启用Aqua安装器，彻底告别Python
+      - name: 安装Qt 6.8.3（用aqtinstall手动安装，彻底告别Python依赖）
+        run: |
+          # 下载aqtinstall（Qt官方无Python依赖的安装工具）
+          Invoke-WebRequest -Uri "https://github.com/miurahr/aqtinstall/releases/download/v3.1.9/aqt.exe" -OutFile "aqt.exe"
+          # 安装Qt 6.8.3 MinGW版本，包含所有必需模块
+          .\aqt.exe install-qt windows desktop 6.8.3 win64_mingw131 -O C:\Qt
+          # 把Qt的bin目录添加到系统环境变量
+          echo "C:\Qt\6.8.3\mingw131_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: 编译项目
         run: |
