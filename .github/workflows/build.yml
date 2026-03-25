@@ -13,17 +13,20 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v5
 
-      # ✅ 终极稳定方案：Qt 6.6.2 + MSVC2019 64位（GitHub原生支持，无任何包缺失）
       - name: 安装Qt环境
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.6.2'
           host: 'windows'
           target: 'desktop'
-          arch: 'win64_msvc2019_64'  # 🔥 改用MSVC，永不报错
-          setup-python: false        # 禁用Python，彻底避免权限冲突
+          arch: 'win64_msvc2019_64'
+          setup-python: false
 
-      # ✅ MSVC 编译命令（nmake 替代 mingw32-make）
+      # 🔥 【关键修复】初始化 MSVC 编译环境（自动配置 cl.exe 和 nmake）
+      - name: 初始化Visual Studio编译环境
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # 编译项目（现在 nmake 和 cl 都能正常找到）
       - name: 编译项目
         run: |
           mkdir build
@@ -31,13 +34,11 @@ jobs:
           qmake ..\qt_im_project.pro
           nmake
 
-      # ✅ 打包依赖（和之前一样）
       - name: 打包Qt依赖
         run: |
           cd build/release
           windeployqt --release --no-translations qt_im_project.exe
 
-      # ✅ 上传成品
       - name: 上传软件包
         uses: actions/upload-artifact@v4
         with:
