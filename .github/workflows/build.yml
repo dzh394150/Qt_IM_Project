@@ -1,4 +1,4 @@
-name: Qt 自动编译打包
+name: Qt 自动编译打包（终极零冲突版）
 
 on:
   push:
@@ -16,7 +16,12 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v5
 
-      # 2. 安装 Qt 6.10.1
+      # 2. 卸载 Python 以避免冲突
+      - name: 卸载 Python
+        run: |
+          Remove-Item -Recurse -Force C:\hostedtoolcache\windows\Python
+
+      # 3. 安装 Qt 6.10.1
       - name: 安装 Qt 6.10.1
         uses: jurplel/install-qt-action@v4
         with:
@@ -24,24 +29,24 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_mingw131'
-          setup-python: false  # 禁用Python以避免冲突
+          setup-python: false  # 禁用Python
           aqua: true  # 使用Qt官方Aqua安装器
 
-      # 3. 验证Qt环境，确保qmake可用
+      # 4. 验证Qt环境，确保qmake可用
       - name: 验证Qt环境
         run: qmake --version
 
-      # 4. 编译项目
+      # 5. 编译项目
       - name: 编译项目
         run: |
           qmake qt_im_project.pro
           mingw32-make -j4
 
-      # 5. 打包所有依赖
+      # 6. 打包所有依赖
       - name: 打包依赖
         run: windeployqt --release --no-translations release/qt_im_project.exe
 
-      # 6. 上传生成的软件包
+      # 7. 上传生成的软件包
       - name: 上传成品
         uses: actions/upload-artifact@v4
         with:
