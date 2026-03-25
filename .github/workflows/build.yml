@@ -1,4 +1,4 @@
-name: Qt 自动编译打包（终极零冲突版）
+name: Qt 自动编译打包
 
 on:
   push:
@@ -8,27 +8,26 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    # 仅保留一个有效环境变量，彻底解决Node.js版本冲突
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      # 1. 升级到checkout@v5，原生支持Node.js 24，彻底消除弃用警告
+      # 1. 拉取代码
       - name: 拉取代码
         uses: actions/checkout@v5
 
-      # 2. 用Qt官方认证的稳定Action，无Python依赖，彻底解决环境冲突
-      - name: 安装 Qt 6.8.3
+      # 2. 安装 Qt 6.10.1
+      - name: 安装 Qt 6.10.1
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.3'
+          version: '6.10.1'
           host: 'windows'
           target: 'desktop'
           arch: 'win64_mingw131'
-          setup-python: false  # 彻底禁用Python，从根源解决Python.exe报错
-          aqua: true  # 启用Qt官方Aqua安装器，纯二进制，无Python/Node依赖
+          setup-python: false  # 禁用Python以避免冲突
+          aqua: true  # 使用Qt官方Aqua安装器
 
-      # 3. 验证Qt环境，确保qmake全局可用
+      # 3. 验证Qt环境，确保qmake可用
       - name: 验证Qt环境
         run: qmake --version
 
@@ -38,11 +37,11 @@ jobs:
           qmake qt_im_project.pro
           mingw32-make -j4
 
-      # 5. 自动打包所有依赖DLL
+      # 5. 打包所有依赖
       - name: 打包依赖
         run: windeployqt --release --no-translations release/qt_im_project.exe
 
-      # 6. 生成可下载的软件包
+      # 6. 上传生成的软件包
       - name: 上传成品
         uses: actions/upload-artifact@v4
         with:
