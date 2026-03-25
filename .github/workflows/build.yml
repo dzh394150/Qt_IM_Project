@@ -8,17 +8,22 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    # 强制使用Node.js 24，解决弃用警告
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: 安装 Qt 6.10.1
+      - name: 安装 Qt 6.8.3 (稳定兼容版)
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.10.1'
+          version: '6.8.3'
           host: 'windows'
           target: 'desktop'
           arch: 'win64_mingw131'
+          setup-python: false  # 关键：禁用自动安装Python，彻底避免Python报错
 
       - name: 编译项目
         run: |
@@ -27,7 +32,7 @@ jobs:
 
       - name: 自动打包所有依赖DLL
         run: |
-          windeployqt release/qt_im_project.exe
+          windeployqt --release --no-translations release/qt_im_project.exe
 
       - name: 生成可下载的软件包
         uses: actions/upload-artifact@v4
