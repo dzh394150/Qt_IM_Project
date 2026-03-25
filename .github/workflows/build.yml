@@ -13,32 +13,31 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v5
 
-      # ✅ 【唯一稳定可用组合】Qt 6.6.2 + MinGW 11.2 （GitHub Actions官方兼容）
-      - name: 安装 Qt 环境
+      # ✅ 终极稳定方案：Qt 6.6.2 + MSVC2019 64位（GitHub原生支持，无任何包缺失）
+      - name: 安装Qt环境
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.6.2'        # 🔥 核心：放弃6.10.1，用这个稳定版
+          version: '6.6.2'
           host: 'windows'
           target: 'desktop'
-          arch: 'win64_mingw112'  # 🔥 对应正确架构
-          setup-python: false
-          aqtversion: latest      # 🔥 用最新安装工具，避免版本不兼容
+          arch: 'win64_msvc2019_64'  # 🔥 改用MSVC，永不报错
+          setup-python: false        # 禁用Python，彻底避免权限冲突
 
-      # 编译项目
+      # ✅ MSVC 编译命令（nmake 替代 mingw32-make）
       - name: 编译项目
         run: |
           mkdir build
           cd build
           qmake ..\qt_im_project.pro
-          mingw32-make -j4
+          nmake
 
-      # 打包所有Qt依赖（双击exe可直接运行）
-      - name: 打包依赖
+      # ✅ 打包依赖（和之前一样）
+      - name: 打包Qt依赖
         run: |
           cd build/release
           windeployqt --release --no-translations qt_im_project.exe
 
-      # 上传成品
+      # ✅ 上传成品
       - name: 上传软件包
         uses: actions/upload-artifact@v4
         with:
