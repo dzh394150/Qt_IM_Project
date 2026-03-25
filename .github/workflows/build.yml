@@ -13,7 +13,6 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v5
 
-      # 🔥 关键修复：安装Qt + 自动带上 websockets 模块
       - name: 安装Qt环境 + Websockets组件
         uses: jurplel/install-qt-action@v4
         with:
@@ -22,13 +21,11 @@ jobs:
           target: 'desktop'
           arch: 'win64_msvc2019_64'
           setup-python: false
-          modules: 'qtwebsockets'  # ✅ 安装你项目需要的websockets模块
+          modules: 'qtwebsockets'
 
-      # 初始化MSVC编译环境
       - name: 初始化Visual Studio编译环境
         uses: ilammy/msvc-dev-cmd@v1
 
-      # 编译项目
       - name: 编译项目
         run: |
           mkdir build
@@ -36,13 +33,16 @@ jobs:
           qmake ..\qt_im_project.pro
           nmake
 
-      # 打包依赖
+      # 🔥 云端自动复制你根目录的btnimage到发布文件夹
+      - name: 复制自定义图片资源
+        run: |
+          xcopy /E /I btnimage build/release/btnimage
+
       - name: 打包Qt依赖
         run: |
           cd build/release
           windeployqt --release --no-translations qt_im_project.exe
 
-      # 上传成品
       - name: 上传软件包
         uses: actions/upload-artifact@v4
         with:
