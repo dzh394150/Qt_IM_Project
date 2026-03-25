@@ -1,0 +1,36 @@
+name: Qt 自动编译打包
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Qt 6.10.1
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.10.1'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_mingw131'
+
+      - name: 编译项目
+        run: |
+          qmake qt_im_project.pro
+          mingw32-make -j4
+
+      - name: 自动打包所有依赖DLL
+        run: |
+          windeployqt release/qt_im_project.exe
+
+      - name: 生成可下载的软件包
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyApp
+          path: release/
