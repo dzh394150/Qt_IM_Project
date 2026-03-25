@@ -1,6 +1,5 @@
 name: Qt 自动编译打包
 
-# 触发条件：push到main分支 / 手动触发
 on:
   push:
     branches: [ main ]
@@ -8,41 +7,39 @@ on:
 
 jobs:
   build:
-    # 运行环境：Windows最新版
     runs-on: windows-latest
 
     steps:
-      # 1. 拉取项目代码（官方标准步骤，无任何问题）
       - name: 拉取代码
         uses: actions/checkout@v5
 
-      # 2. 安装Qt 6.10.1（MinGW 64位，和你的配置一致）
-      - name: 安装Qt环境
+      # 🔥 核心修正：Qt 6.10.1 正确架构 = win64_mingw142（不是131）
+      - name: 安装Qt 6.10.1
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.10.1'
           host: 'windows'
           target: 'desktop'
-          arch: 'win64_mingw131'
-          setup-python: false  # 禁用Python，避免冲突
+          arch: 'win64_mingw142'  # ✅ 这里是修复的关键！
+          setup-python: false
 
-      # 3. 编译项目（推荐【外部构建】，更规范不污染源码）
+      # 编译项目（外部构建，规范无冲突）
       - name: 编译项目
         run: |
           mkdir build
           cd build
-          qmake ..\qt_im_project.pro  # 指向根目录的pro文件
-          mingw32-make -j4  # 多线程编译
+          qmake ..\qt_im_project.pro
+          mingw32-make -j4
 
-      # 4. 自动打包所有Qt依赖库（生成可直接运行的exe）
+      # 打包Qt所有依赖
       - name: 打包依赖
         run: |
           cd build/release
           windeployqt --release --no-translations qt_im_project.exe
 
-      # 5. 上传编译成品（GitHub Actions可直接下载）
+      # 上传成品
       - name: 上传软件包
         uses: actions/upload-artifact@v4
         with:
           name: Qt_IM_Project_Windows
-          path: build/release/  # 上传整个release文件夹
+          path: build/release/
