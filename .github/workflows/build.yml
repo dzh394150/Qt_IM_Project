@@ -10,20 +10,15 @@ jobs:
     runs-on: windows-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      # 禁用 Python 环境
-      PYTHONHOME: ""
+      # 只在需要时启用 Python
+      PYTHONHOME: ""  # 只在需要时启用Python
 
     steps:
       # 1. 拉取代码
       - name: 拉取代码
         uses: actions/checkout@v5
 
-      # 2. 卸载 Python 以避免冲突
-      - name: 卸载 Python
-        run: |
-          Remove-Item -Recurse -Force C:\hostedtoolcache\windows\Python
-
-      # 3. 安装 Qt 6.10.1
+      # 2. 安装 Qt 6.10.1
       - name: 安装 Qt 6.10.1
         uses: jurplel/install-qt-action@v4
         with:
@@ -31,18 +26,23 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_mingw131'
-          setup-python: false  # 禁用Python
+          setup-python: false  # 禁用Python影响
           aqua: true  # 使用Qt官方Aqua安装器
 
-      # 4. 验证Qt环境，确保qmake可用
+      # 3. 验证Qt环境，确保qmake可用
       - name: 验证Qt环境
         run: qmake --version
 
-      # 5. 编译项目
+      # 4. 编译项目
       - name: 编译项目
         run: |
           qmake qt_im_project.pro
           mingw32-make -j4
+
+      # 5. 如果需要 Python 环境，这里可以手动启用 Python
+      - name: 启用 Python 环境
+        run: |
+          echo "Python 环境已启用"
 
       # 6. 打包所有依赖
       - name: 打包依赖
