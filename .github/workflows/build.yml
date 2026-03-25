@@ -33,10 +33,10 @@ jobs:
           qmake ..\qt_im_project.pro
           nmake
 
-      # 🔥 云端自动复制你根目录的btnimage到发布文件夹
+      # ✅ 修复命令：复制 btnimage 文件夹（零报错）
       - name: 复制自定义图片资源
         run: |
-          xcopy /E /I btnimage build/release/btnimage
+          Copy-Item -Path "btnimage" -Destination "build/release/btnimage" -Recurse -Force
 
       - name: 打包Qt依赖
         run: |
