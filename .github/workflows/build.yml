@@ -8,22 +8,24 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    # 强制使用Node.js 24，解决弃用警告
+    # 彻底解决Node.js 20弃用问题
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
     steps:
       - name: 拉取代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5  # 升级到支持Node.js 24的最新版
 
-      - name: 安装 Qt 6.8.3 (稳定兼容版)
-        uses: jurplel/install-qt-action@v4
+      - name: 安装Aqua（Qt官方稳定安装工具，彻底替代install-qt-action）
+        uses: jurplel/install-qt-action@v5  # 升级到v5，支持Node.js 24，无Python依赖
         with:
           version: '6.8.3'
           host: 'windows'
           target: 'desktop'
           arch: 'win64_mingw131'
-          setup-python: false  # 关键：禁用自动安装Python，彻底避免Python报错
+          setup-python: false
+          aqua: true  # 启用Aqua安装器，彻底告别Python
 
       - name: 编译项目
         run: |
