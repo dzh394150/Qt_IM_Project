@@ -1,4 +1,4 @@
-name: Qt 自动编译打包
+name: Qt 自动编译打包（最终稳版）
 
 on:
   push:
@@ -8,38 +8,63 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    # 仅保留一个环境变量，彻底解决冲突，强制使用Node.js 24
+    # 仅保留一个环境变量，彻底解决Node.js冲突，强制使用Node.js 24
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: 拉取代码（升级到v5，原生支持Node.js 24，消除弃用警告）
-        uses: actions/checkout@v5
+      - name: 1. 拉取完整代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: 安装Qt 6.8.3（aqtinstall手动安装，零Python/Node依赖）
+      - name: 2. 安装Qt 6.8.3（aqtinstall+清华镜像，零依赖）
+        shell: powershell
         run: |
-          # 下载Qt官方CI工具aqtinstall（纯二进制，无任何环境依赖）
-          Invoke-WebRequest -Uri "https://github.com/miurahr/aqtinstall/releases/download/v3.1.9/aqt.exe" -OutFile "aqt.exe"
-          # 安装Qt 6.8.3 MinGW版本，包含所有必需模块
-          .\aqt.exe install-qt windows desktop 6.8.3 win64_mingw131 -O C:\Qt
-          # PowerShell原生方式添加环境变量，确保qmake全局可用
+          $ErrorActionPreference = "Stop"
+          Write-Host "=== 步骤2：开始下载aqtinstall ==="
+          
+          # 下载Qt官方CI工具aqtinstall（纯二进制，无Python/Node依赖）
+          Invoke-WebRequest -Uri "https://github.com/miurahr/aqtinstall/releases/download/v3.1.9/aqt.exe" -OutFile "aqt.exe" -UseBasicParsing
+          if ($LASTEXITCODE -ne 0) { Write-Host "❌ 下载aqtinstall失败"; exit 1 }
+          
+          Write-Host "=== 步骤2：开始安装Qt 6.8.3 MinGW版本 ==="
+          # 用清华镜像加速，彻底解决GitHub下载超时问题
+          .\aqt.exe install-qt windows desktop 6.8.3 win64_mingw131 --outputdir C:\Qt --mirror https://mirrors.tuna.tsinghua.edu.cn/qtproject/
+          if ($LASTEXITCODE -ne 0) { Write-Host "❌ 安装Qt失败"; exit 1 }
+          
+          # 正确添加Qt环境变量，确保qmake全局可用
           $qtBinPath = "C:\Qt\6.8.3\mingw131_64\bin"
+          Write-Host "=== 步骤2：添加Qt环境变量: $qtBinPath ==="
           Add-Content -Path $env:GITHUB_PATH -Value $qtBinPath -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { Write-Host "❌ 添加环境变量失败"; exit 1 }
 
-      - name: 验证Qt环境（确保qmake正常可用，排查问题用）
+      - name: 3. 验证Qt环境（确保qmake正常）
+        shell: powershell
         run: |
+          Write-Host "=== 步骤3：验证qmake可用性 ==="
           qmake --version
+          if ($LASTEXITCODE -ne 0) { Write-Host "❌ qmake不可用，环境变量配置错误"; exit 1 }
 
-      - name: 编译项目
+      - name: 4. 编译项目
+        shell: powershell
         run: |
+          Write-Host "=== 步骤4：执行qmake ==="
           qmake qt_im_project.pro
+          if ($LASTEXITCODE -ne 0) { Write-Host "❌ qmake执行失败"; exit 1 }
+          
+          Write-Host "=== 步骤4：执行mingw32-make编译 ==="
           mingw32-make -j4
+          if ($LASTEXITCODE -ne 0) { Write-Host "❌ 项目编译失败"; exit 1 }
 
-      - name: 自动打包所有依赖DLL
+      - name: 5. 自动打包所有依赖DLL
+        shell: powershell
         run: |
+          Write-Host "=== 步骤5：执行windeployqt打包 ==="
           windeployqt --release --no-translations release/qt_im_project.exe
+          if ($LASTEXITCODE -ne 0) { Write-Host "❌ 打包依赖失败"; exit 1 }
 
-      - name: 生成可下载的软件包
+      - name: 6. 生成可下载的软件包
         uses: actions/upload-artifact@v4
         with:
           name: MyApp
