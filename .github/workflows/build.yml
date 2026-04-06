@@ -15,12 +15,28 @@ jobs:
 
     env:
       BUILD_DIR: build-ci
-      PROJECT_FILE: 20260329windows.pro
-      APP_NAME: 20260329windows
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Resolve Project Metadata
+        id: resolve_project
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $proFiles = Get-ChildItem -File *.pro
+
+          if ($proFiles.Count -ne 1) {
+            throw "Expected exactly one .pro file in repository root, found $($proFiles.Count)."
+          }
+
+          $projectFile = $proFiles[0].Name
+          $appName = $proFiles[0].BaseName
+
+          "PROJECT_FILE=$projectFile" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APP_NAME=$appName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "project_file=$projectFile" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "app_name=$appName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Install Qt 6.6.2
         uses: jurplel/install-qt-action@v4
@@ -40,28 +56,38 @@ jobs:
       - name: Build Release
         run: |
           $ErrorActionPreference = 'Stop'
-          if (Test-Path $env:BUILD_DIR) {
-            Remove-Item -Path $env:BUILD_DIR -Recurse -Force
+
+          foreach ($path in @($env:BUILD_DIR, 'release', 'debug', 'Makefile', '.qmake.stash')) {
+            if (Test-Path $path) {
+              Remove-Item -Path $path -Recurse -Force
+            }
           }
 
-          New-Item -ItemType Directory -Path $env:BUILD_DIR | Out-Null
-          Set-Location $env:BUILD_DIR
-
-          qmake "..\$env:PROJECT_FILE" "CONFIG+=release"
+          qmake $env:PROJECT_FILE "CONFIG+=release"
           nmake /NOLOGO
 
-      - name: Copy Runtime Assets
+      - name: Stage Release Package
         run: |
           $ErrorActionPreference = 'Stop'
           $releaseDir = Join-Path $env:BUILD_DIR 'release'
-          $exePath = Join-Path $releaseDir "$env:APP_NAME.exe"
 
-          if (!(Test-Path $releaseDir)) {
-            throw "Release output directory not found: $releaseDir"
+          if (Test-Path $env:BUILD_DIR) {
+            Remove-Item -Path $env:BUILD_DIR -Recurse -Force
           }
+          New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+
+          $candidateExePaths = @(
+            (Join-Path 'release' "$env:APP_NAME.exe"),
+            (Join-Path '.' "$env:APP_NAME.exe")
+          )
+
+          $exePath = $candidateExePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+
           if (!(Test-Path $exePath)) {
-            throw "Built executable not found: $exePath"
+            throw "Built executable not found. Checked: $($candidateExePaths -join ', ')"
           }
+
+          Copy-Item -Path $exePath -Destination (Join-Path $releaseDir "$env:APP_NAME.exe") -Force
 
           foreach ($asset in @('btnimage', 'cert')) {
             if (!(Test-Path $asset)) {
@@ -80,6 +106,6 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 20260329windows-windows
+          name: ${{ steps.resolve_project.outputs.app_name }}-windows
           path: build-ci/release/
           if-no-files-found: error
