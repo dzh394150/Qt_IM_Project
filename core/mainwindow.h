@@ -157,7 +157,7 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-    void setLoginInfo(const QString &username, QSslSocket *sslSocket);
+    void setLoginInfo(const QString &username, QSslSocket *sslSocket, const QString &accessToken);
 
     // 【0110晚上新增】文件分片传输配置常量（1MB/片，可调整）
     static const qint64 FILE_CHUNK_SIZE;
@@ -238,6 +238,7 @@ private:
     void showFriendRequestRedDot(int unreadCount);
     void sendFriendRequestAgree(const QString &fromUser);
     void sendFriendRequestRefuse(const QString &fromUser);
+    void applyAuthorization(QNetworkRequest &request) const;
 
     QSslConfiguration getSslConfig();
     QList<QSslError> ignoreCriticalSslErrors(const QList<QSslError> &errors, QString &errorSummary);
@@ -248,6 +249,7 @@ private:
     QSslConfiguration m_sslConf;
     QNetworkAccessManager *m_netManager;
     QString m_currentUser;
+    QString m_accessToken;
     QString m_selectedFriend;
     FriendListModel *m_friendListModel;
     FriendRequestModel *m_friendRequestModel;

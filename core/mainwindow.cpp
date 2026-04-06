@@ -9,6 +9,8 @@
 #include <QCryptographicHash>
 #include <QNetworkRequest>
 #include <QNetworkReply>
+#include <QHttpMultiPart>
+#include <QHttpPart>
 #include <QUrl>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -55,6 +57,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_sslSocket(nullptr)
     , m_netManager(nullptr)
     , m_currentUser("")
+    , m_accessToken("")
     , m_selectedFriend("")
     , m_friendListModel(new FriendListModel(this))
     , m_friendRequestModel(new FriendRequestModel(this))
@@ -186,6 +189,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->chat_info_show->setModel(m_chatModel);
     auto *chatDelegate = new ChatDelegate(ui->chat_info_show);
     chatDelegate->setSslConfiguration(m_sslConf);
+    chatDelegate->setAccessToken(m_accessToken);
     ui->chat_info_show->setItemDelegate(chatDelegate);
     // 连接滚动条信号用于懒加载
     connect(ui->chat_info_show->verticalScrollBar(), &QScrollBar::valueChanged, this, &MainWindow::onChatViewScrollValueChanged);
@@ -349,12 +353,17 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-void MainWindow::setLoginInfo(const QString &username, QSslSocket *sslSocket)
+void MainWindow::setLoginInfo(const QString &username, QSslSocket *sslSocket, const QString &accessToken)
 {
     m_currentUser = username;
+    m_accessToken = accessToken;
     m_sslSocket = sslSocket;
     m_sslSocket->setParent(this);
     m_sslConf = sslSocket->sslConfiguration();
+    if (auto *chatDelegate = qobject_cast<ChatDelegate *>(ui->chat_info_show->itemDelegate())) {
+        chatDelegate->setSslConfiguration(m_sslConf);
+        chatDelegate->setAccessToken(m_accessToken);
+    }
     
     // 初始化本地聊天缓存
     if (!LocalChatCache::instance()->init(username)) {
@@ -444,6 +453,13 @@ void MainWindow::setLoginInfo(const QString &username, QSslSocket *sslSocket)
 }
 
 // 【0112晚上修正】大于64KB的大文件不能直接丢弃，补充发送大文件的逻辑
+void MainWindow::applyAuthorization(QNetworkRequest &request) const
+{
+    if (!m_accessToken.isEmpty()) {
+        request.setRawHeader("Authorization", QByteArray("Bearer ") + m_accessToken.toUtf8());
+    }
+}
+
 void MainWindow::sendWebSocketMessage(const QString &message)
 {
     QByteArray payload = message.toUtf8();
@@ -516,6 +532,7 @@ void MainWindow::loadFriendRequests()
 
     QNetworkRequest req{QUrl(urlStr)};
     req.setSslConfiguration(m_sslConf);
+    applyAuthorization(req);
 
     QNetworkReply *reply = m_netManager->get(req);
 
@@ -1868,7 +1885,7 @@ void MainWindow::onBtnAddFriendsClicked()
 {
     if (!m_addFriendsDialog) {
         // 确保AddFriends构造函数为explicit AddFriends(QWidget *parent = nullptr)
-        m_addFriendsDialog = new AddFriends(m_netManager, m_sslConf, m_currentUser, this);
+        m_addFriendsDialog = new AddFriends(m_netManager, m_sslConf, m_currentUser, m_accessToken, this);
     }
     m_addFriendsDialog->show();
 }
@@ -1923,8 +1940,9 @@ void MainWindow::sendFriendRequestAgree(const QString &fromUser)
 {
     QNetworkRequest req(QUrl("https://www.singchat.chat/friend/handle"));
     req.setSslConfiguration(m_sslConf);
+    applyAuthorization(req);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-    QByteArray postData = "from=" + fromUser.toUtf8() + "&to=" + m_currentUser.toUtf8() + "&agree=true";
+    QByteArray postData = "from=" + fromUser.toUtf8() + "&agree=true";
     QNetworkReply *reply = m_netManager->post(req, postData);
     connect(reply, &QNetworkReply::finished, this, [=]() {
         reply->deleteLater();
@@ -1945,8 +1963,9 @@ void MainWindow::sendFriendRequestRefuse(const QString &fromUser)
 {
     QNetworkRequest req(QUrl("https://www.singchat.chat/friend/handle"));
     req.setSslConfiguration(m_sslConf);
+    applyAuthorization(req);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
-    QByteArray postData = "from=" + fromUser.toUtf8() + "&to=" + m_currentUser.toUtf8() + "&agree=false";
+    QByteArray postData = "from=" + fromUser.toUtf8() + "&agree=false";
     QNetworkReply *reply = m_netManager->post(req, postData);
     connect(reply, &QNetworkReply::finished, this, [=]() {
         reply->deleteLater();
@@ -3185,43 +3204,97 @@ void MainWindow::on_chatInput_textChanged()
 // 【0110 晚上新增】分片传输核心函数（主入口）
 void MainWindow::sendFileByChunk(const QString &filePath, const QString &fileUniqueId, const QString &fileType)
 {
-    // 先清理上一次的发送残留
-    if (m_sendFile) {
-        if (m_sendFile->isOpen()) {
-            m_sendFile->close();
-        }
-        delete m_sendFile;
-        m_sendFile = nullptr;
-    }
-    
-    // 保存发送文件信息到成员变量，支持异步操作
-    m_sendFile = new QFile(filePath);
-    if (!m_sendFile->open(QIODevice::ReadOnly)) {
-        QMessageBox::warning(this, "提示", "无法打开文件，无法进行分片传输！");
-        delete m_sendFile;
-        m_sendFile = nullptr;
+    if (m_netManager == nullptr) {
+        QMessageBox::warning(this, "提示", "网络管理器未初始化，无法上传文件。");
         return;
     }
-    
-    // 获取文件基础信息
-    QFileInfo fileInfo(filePath);
-    qint64 fileTotalSize = fileInfo.size();
-    // 计算总分片数（向上取整，避免最后一个分片不足256KB时遗漏）
-    int totalChunks = (fileTotalSize + FILE_CHUNK_SIZE - 1) / FILE_CHUNK_SIZE;
+    if (m_accessToken.isEmpty()) {
+        QMessageBox::warning(this, "提示", "缺少访问令牌，请重新登录后再试。");
+        return;
+    }
 
-    // 记录当前传输文件ID，用于后续校验
+    QFileInfo localFileInfo(filePath);
+    if (!localFileInfo.exists() || !localFileInfo.isFile() || !localFileInfo.isReadable()) {
+        QMessageBox::warning(this, "提示", "本地文件不存在或不可读，无法上传。");
+        return;
+    }
+
+    QFile *uploadFile = new QFile(filePath);
+    if (!uploadFile->open(QIODevice::ReadOnly)) {
+        delete uploadFile;
+        QMessageBox::warning(this, "提示", "无法打开文件，无法上传。");
+        return;
+    }
+
     m_currentTransferFileId = fileUniqueId;
-    m_fileSendTotalSize = fileTotalSize;
+    m_fileSendTotalSize = localFileInfo.size();
     m_fileSendHasTransferred = 0;
-    m_sendTotalChunks = totalChunks;
-    m_sendCurrentChunkIndex = 0;
     m_sendFileType = fileType;
 
-    // 【0320并发优化】初始化滑动窗口
-    m_inFlightChunks.clear();
+    QNetworkRequest request(QUrl("https://www.singchat.chat/file/upload"));
+    request.setSslConfiguration(m_sslConf);
+    applyAuthorization(request);
 
-    // 触发第一个分片的异步发送（非阻塞，不影响聊天）
-    QMetaObject::invokeMethod(this, "onAsyncSendNextChunk", Qt::QueuedConnection);
+    QHttpMultiPart *multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+
+    auto appendTextPart = [multiPart](const QString &name, const QString &value) {
+        QHttpPart part;
+        part.setHeader(QNetworkRequest::ContentDispositionHeader,
+                       QVariant(QString("form-data; name=\"%1\"").arg(name)));
+        part.setBody(value.toUtf8());
+        multiPart->append(part);
+    };
+
+    appendTextPart("to", m_selectedFriend);
+    appendTextPart("msg_content_type", fileType);
+    appendTextPart("time", QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"));
+
+    QHttpPart filePart;
+    filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
+                       QVariant(QString("form-data; name=\"file\"; filename=\"%1\"")
+                                    .arg(localFileInfo.fileName())));
+    filePart.setBodyDevice(uploadFile);
+    uploadFile->setParent(multiPart);
+    multiPart->append(filePart);
+
+    QNetworkReply *reply = m_netManager->post(request, multiPart);
+    multiPart->setParent(reply);
+
+    connect(reply, &QNetworkReply::uploadProgress, this, [this](qint64 sent, qint64 total) {
+        if (total > 0) {
+            updateFileTransferProgress(sent, total);
+        }
+    });
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        const bool ok = (reply->error() == QNetworkReply::NoError);
+        const QByteArray respBody = reply->readAll();
+
+        if (ok) {
+            updateFileTransferProgress(m_fileSendTotalSize, m_fileSendTotalSize);
+            QTimer::singleShot(600, this, [this]() {
+                ui->fileprogress->hide();
+                ui->fileprogress->reset();
+                m_isProgressBarInited = false;
+            });
+        } else {
+            ui->fileprogress->hide();
+            ui->fileprogress->reset();
+            m_isProgressBarInited = false;
+            QMessageBox::warning(this, "提示",
+                                 QString("文件上传失败：%1\n%2")
+                                     .arg(reply->errorString(), QString::fromUtf8(respBody)));
+        }
+
+        m_currentTransferFileId.clear();
+        m_fileSendTotalSize = 0;
+        m_fileSendHasTransferred = 0;
+        m_sendTotalChunks = 0;
+        m_sendCurrentChunkIndex = 0;
+        m_sendFileType.clear();
+
+        reply->deleteLater();
+    });
 }
 
 // 【0112修正】发送单个分片到后端
@@ -3453,7 +3526,7 @@ void MainWindow::onChatViewClicked(const QModelIndex &index)
         // QString imageUrl = "https://www.singchat.chat/avatar/1767778028_3763.jpg";
         qDebug() << "准备加载的图片URL为" << imageUrl;
         // 下面这个函数会发起下载原图的请求
-        m_imagePreviewDialog->setImageUrl(imageUrl, m_sslConf);
+        m_imagePreviewDialog->setImageUrl(imageUrl, m_sslConf, m_accessToken);
         qDebug() << "设置URL完毕";
         m_imagePreviewDialog->show();
         qDebug() << "大图展示完毕";
@@ -3473,7 +3546,7 @@ void MainWindow::onChatViewClicked(const QModelIndex &index)
             ui->fileprogress->setFormat("文件下载进度%p%");
 
             // 发起下载
-            m_fileDownloader->startDownload(fileAttach.downloadUrl, m_currentUser, m_sslConf);
+            m_fileDownloader->startDownload(fileAttach.downloadUrl, m_currentUser, m_sslConf, m_accessToken);
         } else {
             QMessageBox::warning(this, "警告", "文件下载URL为空，无法下载！");
         }
@@ -3767,12 +3840,23 @@ void MainWindow::on_btnCreateGroup_clicked()
     if (!m_createGroupDialog) {
         // 传入与注册逻辑一致的参数（复刻注册逻辑，保证可行性）
         m_createGroupDialog = new CreateGroup(
+            m_netManager,
+            m_sslConf,
+            /*
             m_netManager,        // 复用HTTP管理器（与注册共用一个，避免重复创建）
             m_sslConf,           // 通用SSL配置（与注册共用，保证一致性）
             m_sslSocket,         // 主窗口已完成握手的SSL套接字（复用发送消息）
             m_currentUser,       // 当前登录用户（与注册一致）
+            m_sslSocket,
+            m_currentUser,
+            m_accessToken,
             this                 // 父窗口
             );
+            */
+            m_sslSocket,
+            m_currentUser,
+            m_accessToken,
+            this);
     }
 
     // 1. 传递好友列表模型和委托（根据你的实际列表修改）

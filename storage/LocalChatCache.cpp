@@ -260,8 +260,8 @@ QVector<ChatMessage> LocalChatCache::queryLocalChatRecords(const QString &fromUs
         sql += " AND timestamp < :beforeTs ";
     }
 
-    // 按时间戳降序排列，取最新的记录
-    sql += " ORDER BY timestamp DESC LIMIT :limit";
+    // 按时间戳升序排列（旧→新），时间戳相同则按id升序（确保排序稳定）
+    sql += " ORDER BY timestamp ASC, id ASC LIMIT :limit";
 
     query.prepare(sql);
     query.bindValue(":from", fromUser);
@@ -307,9 +307,7 @@ QVector<ChatMessage> LocalChatCache::queryLocalChatRecords(const QString &fromUs
         messages.append(msg);
     }
 
-    // 注意：查询结果是按时间降序排列的，需要反转以保持时间正序
-    std::reverse(messages.begin(), messages.end());
-
+    // 查询结果已经是按时间升序排列（旧→新），无需反转
     return messages;
 }
 

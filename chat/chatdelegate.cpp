@@ -66,6 +66,11 @@ void ChatDelegate::setSslConfiguration(const QSslConfiguration &config)
     m_sslConf = config;
 }
 
+void ChatDelegate::setAccessToken(const QString &accessToken)
+{
+    m_accessToken = accessToken;
+}
+
 QString ChatDelegate::getCachedAvatarPath(const QString &url) const
 {
     QByteArray hash = QCryptographicHash::hash(url.toUtf8(), QCryptographicHash::Md5);
@@ -137,6 +142,9 @@ void ChatDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, 
         QNetworkRequest req{QUrl(avatarUrl)};
         req.setSslConfiguration(m_sslConf);
         req.setAttribute(QNetworkRequest::User, RequestType_Avatar);
+        if (!m_accessToken.isEmpty()) {
+            req.setRawHeader("Authorization", QByteArray("Bearer ") + m_accessToken.toUtf8());
+        }
         m_netManager->get(req);
     }
 
@@ -560,6 +568,9 @@ void ChatDelegate::downloadFilePreview(const QString &previewUrl) const
     req.setAttribute(QNetworkRequest::User, RequestType_Preview);
     req.setRawHeader("User-Agent", "Mozilla/5.0");
     req.setRawHeader("Accept", "image/*,*/*;q=0.8");
+    if (!m_accessToken.isEmpty()) {
+        req.setRawHeader("Authorization", QByteArray("Bearer ") + m_accessToken.toUtf8());
+    }
     QNetworkReply* reply_preview = m_netManager->get(req);
 
     connect(reply_preview, &QNetworkReply::sslErrors, this, [=](const QList<QSslError> &errors) {

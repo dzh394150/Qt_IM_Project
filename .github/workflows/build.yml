@@ -1,50 +1,85 @@
-name: Qt 自动编译打包
+name: Qt Windows Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
 
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      BUILD_DIR: build-ci
+      PROJECT_FILE: 20260329windows.pro
+      APP_NAME: 20260329windows
+
     steps:
-      - name: 拉取代码
+      - name: Checkout
         uses: actions/checkout@v5
 
-      - name: 安装Qt环境 + Websockets组件
+      - name: Install Qt 6.6.2
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.6.2'
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2019_64'
-          setup-python: false
           modules: 'qtwebsockets'
+          setup-python: false
 
-      - name: 初始化Visual Studio编译环境
+      - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
-      - name: 编译项目
+      - name: Build Release
         run: |
-          mkdir build
-          cd build
-          qmake ..\qt_im_project.pro
-          nmake
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path $env:BUILD_DIR) {
+            Remove-Item -Path $env:BUILD_DIR -Recurse -Force
+          }
 
-      # ✅ 修复命令：复制 btnimage 文件夹（零报错）
-      - name: 复制自定义图片资源
+          New-Item -ItemType Directory -Path $env:BUILD_DIR | Out-Null
+          Set-Location $env:BUILD_DIR
+
+          qmake "..\$env:PROJECT_FILE" "CONFIG+=release"
+          nmake /NOLOGO
+
+      - name: Copy Runtime Assets
         run: |
-          Copy-Item -Path "btnimage" -Destination "build/release/btnimage" -Recurse -Force
+          $ErrorActionPreference = 'Stop'
+          $releaseDir = Join-Path $env:BUILD_DIR 'release'
+          $exePath = Join-Path $releaseDir "$env:APP_NAME.exe"
 
-      - name: 打包Qt依赖
+          if (!(Test-Path $releaseDir)) {
+            throw "Release output directory not found: $releaseDir"
+          }
+          if (!(Test-Path $exePath)) {
+            throw "Built executable not found: $exePath"
+          }
+
+          foreach ($asset in @('btnimage', 'cert')) {
+            if (!(Test-Path $asset)) {
+              throw "Missing runtime asset directory: $asset"
+            }
+            Copy-Item -Path $asset -Destination (Join-Path $releaseDir $asset) -Recurse -Force
+          }
+
+      - name: Deploy Qt Runtime
         run: |
-          cd build/release
-          windeployqt --release --no-translations qt_im_project.exe
+          $ErrorActionPreference = 'Stop'
+          $releaseDir = Join-Path $env:BUILD_DIR 'release'
+          Set-Location $releaseDir
+          windeployqt --release --compiler-runtime --no-translations "$env:APP_NAME.exe"
 
-      - name: 上传软件包
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Qt_IM_Project_Windows
-          path: build/release/
+          name: 20260329windows-windows
+          path: build-ci/release/
+          if-no-files-found: error

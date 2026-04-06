@@ -67,8 +67,8 @@ void ChatModel::prependMessages(const QVector<ChatMessage> &messages)
     if (messages.isEmpty())
         return;
 
+    // messages 是正序（旧→新），需要倒着插入到开头，保证列表里旧消息在上、新消息在下
     beginInsertRows(QModelIndex(), 0, messages.size() - 1);
-    // 为了保持顺序，需要从后往前插入消息
     for (auto it = messages.rbegin(); it != messages.rend(); ++it) {
         m_messages.prepend(*it);
     }

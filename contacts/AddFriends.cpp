@@ -12,12 +12,14 @@
 AddFriends::AddFriends(QNetworkAccessManager *netManager,
                        const QSslConfiguration &sslConf,
                        const QString &currentUser,
+                       const QString &accessToken,
                        QWidget *parent)
     : QWidget(parent),
     ui(new Ui::AddFriends),
     m_netManager(netManager),
     m_sslConf(sslConf),
     m_currentUser(currentUser),
+    m_accessToken(accessToken),
     m_isDragging(false)
 {
     ui->setupUi(this);
@@ -64,6 +66,9 @@ void AddFriends::onSearchFriendClicked()
 
     QNetworkRequest request(url);
     request.setSslConfiguration(m_sslConf);
+    if (!m_accessToken.isEmpty()) {
+        request.setRawHeader("Authorization", QByteArray("Bearer ") + m_accessToken.toUtf8());
+    }
 
     QNetworkReply *reply = m_netManager->get(request);
     connect(reply, &QNetworkReply::finished, this, [=]() {
@@ -100,6 +105,9 @@ void AddFriends::onSearchFriendClicked()
         // 加载并显示头像
         QNetworkRequest avatarRequest(avatarUrl);
         avatarRequest.setSslConfiguration(m_sslConf);
+        if (!m_accessToken.isEmpty()) {
+            avatarRequest.setRawHeader("Authorization", QByteArray("Bearer ") + m_accessToken.toUtf8());
+        }
         QNetworkReply *avatarReply = m_netManager->get(avatarRequest);
         connect(avatarReply, &QNetworkReply::finished, this, [=]() {
             onAvatarDownloaded(avatarReply);
@@ -154,6 +162,9 @@ void AddFriends::onAddFriendClicked()
     QUrl url("https://www.singchat.chat/friend/request");
     QNetworkRequest request(url);
     request.setSslConfiguration(m_sslConf);
+    if (!m_accessToken.isEmpty()) {
+        request.setRawHeader("Authorization", QByteArray("Bearer ") + m_accessToken.toUtf8());
+    }
 
     QNetworkReply *reply = m_netManager->post(request, multiPart);
     multiPart->setParent(reply);

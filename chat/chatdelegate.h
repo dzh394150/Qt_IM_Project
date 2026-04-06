@@ -16,6 +16,7 @@ class ChatDelegate : public QStyledItemDelegate
 public:
     explicit ChatDelegate(QObject *parent = nullptr);
     void setSslConfiguration(const QSslConfiguration &config);
+    void setAccessToken(const QString &accessToken);
 
     void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override;
@@ -57,6 +58,7 @@ private:
     static const int PREVIEW_MAX_HEIGHT;
 
     QSslConfiguration m_sslConf;
+    QString m_accessToken;
     QString m_cacheDir;
 
     // 【0113晚上新增功能：声明预览图缓存目录】

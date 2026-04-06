@@ -18,6 +18,7 @@ public:
     explicit AddFriends(QNetworkAccessManager *netManager,
                         const QSslConfiguration &sslConf,
                         const QString &currentUser,
+                        const QString &accessToken,
                         QWidget *parent = nullptr);
     ~AddFriends();
 
@@ -38,6 +39,7 @@ private:
     QNetworkAccessManager *m_netManager;
     QSslConfiguration m_sslConf;
     QString m_currentUser;
+    QString m_accessToken;
     // 补充拖动相关成员变量的声明
     bool m_isDragging;
     QPoint m_dragStartPosition;
