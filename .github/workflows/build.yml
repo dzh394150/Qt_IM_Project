@@ -103,6 +103,81 @@ jobs:
           Set-Location $releaseDir
           windeployqt --release --compiler-runtime --no-translations "$env:APP_NAME.exe"
 
+      - name: Copy TLS Runtime Dependencies
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseDir = Join-Path $env:BUILD_DIR 'release'
+          $tlsDir = Join-Path $releaseDir 'tls'
+          New-Item -ItemType Directory -Path $tlsDir -Force | Out-Null
+
+          $pluginDirs = @()
+          if ($env:QT_PLUGIN_PATH) {
+            $pluginDirs += (Join-Path $env:QT_PLUGIN_PATH 'tls')
+          }
+          if ($env:QT_ROOT_DIR) {
+            $pluginDirs += (Join-Path $env:QT_ROOT_DIR 'plugins\\tls')
+          }
+
+          $pluginCopied = $false
+          foreach ($dir in ($pluginDirs | Select-Object -Unique)) {
+            if (!(Test-Path $dir)) {
+              continue
+            }
+
+            Get-ChildItem -Path $dir -Filter 'q*backend.dll' -File | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination (Join-Path $tlsDir $_.Name) -Force
+              $pluginCopied = $true
+            }
+          }
+
+          if (-not $pluginCopied) {
+            throw "No TLS backend plugin was copied. Checked: $($pluginDirs -join ', ')"
+          }
+
+          $opensslCandidateDirs = @(
+            'C:\Program Files\OpenSSL\bin'
+          )
+          if ($env:QT_ROOT_DIR) {
+            $opensslCandidateDirs += (Join-Path $env:QT_ROOT_DIR 'bin')
+          }
+
+          foreach ($dllName in @('libssl-3-x64.dll', 'libcrypto-3-x64.dll')) {
+            $source = $null
+            foreach ($dir in ($opensslCandidateDirs | Select-Object -Unique)) {
+              $candidate = Join-Path $dir $dllName
+              if (Test-Path $candidate) {
+                $source = $candidate
+                break
+              }
+            }
+
+            if ($source) {
+              Copy-Item -Path $source -Destination (Join-Path $releaseDir $dllName) -Force
+            }
+          }
+
+      - name: Verify Package Contents
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseDir = Join-Path $env:BUILD_DIR 'release'
+
+          $mustExist = @(
+            (Join-Path $releaseDir "$env:APP_NAME.exe"),
+            (Join-Path $releaseDir 'btnimage'),
+            (Join-Path $releaseDir 'cert'),
+            (Join-Path $releaseDir 'tls')
+          )
+
+          foreach ($path in $mustExist) {
+            if (!(Test-Path $path)) {
+              throw "Missing packaged path: $path"
+            }
+          }
+
+          Get-ChildItem -Recurse -File $releaseDir |
+            Where-Object { $_.Name -match 'ssl|crypto|backend|tls|crt' } |
+            Select-Object FullName
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
